@@ -5,19 +5,31 @@
  */
 
 import { getAuthToken, getApiUrl } from '../utils/authStorage';
+import { getActiveUnode } from '../utils/unodeStorage';
 
 // Types matching Chronicle backend responses
 export interface Conversation {
-  id: string;
   conversation_id: string;
-  client_id: string;
+  audio_uuid?: string;
   user_id: string;
+  client_id: string;
+  audio_path?: string;
   created_at: string;
-  ended_at?: string;
-  duration_seconds?: number;
+  deleted?: boolean;
+  title?: string;
+  summary?: string;
+  detailed_summary?: string;
+  active_transcript_version?: string;
+  segment_count?: number;
+  has_memory?: boolean;
+  memory_count?: number;
+  transcript_version_count?: number;
+  // Legacy fields for compatibility
+  id?: string;
+  status?: 'active' | 'closed' | 'processing';
   transcript?: TranscriptVersion;
   speaker_segments?: SpeakerSegment[];
-  status: 'active' | 'closed' | 'processing';
+  duration_seconds?: number;
 }
 
 export interface TranscriptVersion {
@@ -61,30 +73,65 @@ export interface MemoriesSearchResponse {
 }
 
 /**
- * Get the base API URL for Chronicle backend.
- * Uses the stored API URL or falls back to default.
+ * Get the Chronicle API base URL.
+ * Uses chronicleApiUrl if set, otherwise constructs from apiUrl + /chronicle/api
  */
-async function getBaseUrl(): Promise<string> {
+async function getChronicleApiUrl(): Promise<string> {
+  const activeUnode = await getActiveUnode();
+
+  // First, check if UNode has explicit Chronicle API URL
+  if (activeUnode?.chronicleApiUrl) {
+    console.log(`[ChronicleAPI] Using UNode chronicleApiUrl: ${activeUnode.chronicleApiUrl}`);
+    return activeUnode.chronicleApiUrl;
+  }
+
+  // Construct from apiUrl + /chronicle/api
+  if (activeUnode?.apiUrl) {
+    const chronicleUrl = `${activeUnode.apiUrl}/chronicle/api`;
+    console.log(`[ChronicleAPI] Constructed Chronicle URL: ${chronicleUrl}`);
+    return chronicleUrl;
+  }
+
+  // Fall back to global storage (legacy)
   const storedUrl = await getApiUrl();
   if (storedUrl) {
-    return storedUrl;
+    const chronicleUrl = `${storedUrl}/chronicle/api`;
+    console.log(`[ChronicleAPI] Using stored URL + /chronicle/api: ${chronicleUrl}`);
+    return chronicleUrl;
   }
-  // Default to the Tailscale URL
-  return 'https://blue.spangled-kettle.ts.net';
+
+  // Default fallback
+  console.log('[ChronicleAPI] Using default Chronicle API URL');
+  return 'https://blue.spangled-kettle.ts.net/chronicle/api';
+}
+
+/**
+ * Get the auth token from active UNode or global storage.
+ */
+async function getToken(): Promise<string | null> {
+  // First, try to get token from active UNode
+  const activeUnode = await getActiveUnode();
+  if (activeUnode?.authToken) {
+    return activeUnode.authToken;
+  }
+
+  // Fall back to global storage (legacy)
+  return getAuthToken();
 }
 
 /**
  * Make an authenticated API request to Chronicle backend.
  */
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const [baseUrl, token] = await Promise.all([getBaseUrl(), getAuthToken()]);
+  const [chronicleApiUrl, token] = await Promise.all([getChronicleApiUrl(), getToken()]);
 
   if (!token) {
     throw new Error('Not authenticated. Please log in first.');
   }
 
-  const url = `${baseUrl}/api/chronicle${endpoint}`;
-  console.log(`[ChronicleAPI] ${options.method || 'GET'} ${endpoint}`);
+  // chronicleApiUrl already includes /chronicle/api, just append the endpoint
+  const url = `${chronicleApiUrl}${endpoint}`;
+  console.log(`[ChronicleAPI] ${options.method || 'GET'} ${url}`);
 
   const response = await fetch(url, {
     ...options,
@@ -191,5 +238,74 @@ export async function deleteMemory(memoryId: string): Promise<void> {
   } catch (error) {
     console.error('[ChronicleAPI] Failed to delete memory:', error);
     throw error;
+  }
+}
+
+/**
+ * Verify authentication against a specific UNode API.
+ * Makes a lightweight request to check if the token is still valid.
+ *
+ * @param apiUrl The UNode's API URL
+ * @param token The auth token to verify
+ * @returns Object with auth status and optional error message
+ */
+export async function verifyUnodeAuth(
+  apiUrl: string,
+  token: string
+): Promise<{ valid: boolean; error?: string; ushadowOk?: boolean; chronicleOk?: boolean }> {
+  try {
+    // Check ushadow auth at /api/auth/me
+    const ushadowUrl = `${apiUrl}/api/auth/me`;
+    console.log(`[ChronicleAPI] Verifying ushadow auth at: ${ushadowUrl}`);
+
+    const ushadowResponse = await fetch(ushadowUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const ushadowOk = ushadowResponse.ok;
+    console.log(`[ChronicleAPI] Ushadow auth: ${ushadowResponse.status}`);
+
+    // Check chronicle auth at /chronicle/users/me (proxied through ushadow)
+    const chronicleUrl = `${apiUrl}/chronicle/users/me`;
+    console.log(`[ChronicleAPI] Verifying chronicle auth at: ${chronicleUrl}`);
+
+    const chronicleResponse = await fetch(chronicleUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const chronicleOk = chronicleResponse.ok;
+    console.log(`[ChronicleAPI] Chronicle auth: ${chronicleResponse.status}`);
+
+    // Both must be OK for full auth
+    if (ushadowOk && chronicleOk) {
+      console.log('[ChronicleAPI] Auth verified successfully (both services)');
+      return { valid: true, ushadowOk: true, chronicleOk: true };
+    }
+
+    // Build error message based on what failed
+    const errors: string[] = [];
+    if (!ushadowOk) {
+      errors.push(`ushadow: ${ushadowResponse.status}`);
+    }
+    if (!chronicleOk) {
+      errors.push(`chronicle: ${chronicleResponse.status}`);
+    }
+
+    console.log(`[ChronicleAPI] Auth failed: ${errors.join(', ')}`);
+    return {
+      valid: false,
+      error: errors.join(', '),
+      ushadowOk,
+      chronicleOk
+    };
+  } catch (error) {
+    console.error('[ChronicleAPI] Auth verification failed:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Network') || message.includes('fetch')) {
+      return { valid: false, error: 'Network error - server unreachable' };
+    }
+    return { valid: false, error: message };
   }
 }

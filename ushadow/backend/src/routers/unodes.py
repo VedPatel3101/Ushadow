@@ -377,13 +377,17 @@ class LeaderInfoResponse(BaseModel):
     capabilities: UNodeCapabilities
     api_port: int = 8000
 
-    # Streaming URLs (derived from Chronicle service route_path)
-    ws_pcm_url: Optional[str] = None  # WebSocket for PCM audio streaming
-    ws_omi_url: Optional[str] = None  # WebSocket for OMI format streaming
+    # API URLs for specific services
+    ushadow_api_url: str  # Main ushadow backend API
+    chronicle_api_url: Optional[str] = None  # Chronicle/OMI backend API (if running)
+
+    # Streaming URLs
+    ws_pcm_url: str  # WebSocket for PCM audio streaming
+    ws_omi_url: str  # WebSocket for OMI format streaming
 
     # Cluster info
-    unodes: List[UNode]
-    services: List[ServiceDeployment]
+    unodes: List[UNode]  # Physical/virtual nodes in the cluster
+    services: List[ServiceDeployment]  # Actually deployed services (from docker)
 
 
 @router.get("/leader/info", response_model=LeaderInfoResponse)
@@ -395,7 +399,10 @@ async def get_leader_info():
     for mobile apps that have just connected via QR code.
     The mobile app uses this to display cluster status and capabilities.
     """
+    from src.services.docker_manager import get_docker_manager
+
     unode_manager = await get_unode_manager()
+    docker_mgr = get_docker_manager()
 
     # Get the leader unode
     leader = await unode_manager.get_unode_by_role(UNodeRole.LEADER)
@@ -405,13 +412,19 @@ async def get_leader_info():
             detail="Leader node not found. Cluster may not be initialized."
         )
 
-    # Get all unodes
+    # Get all unodes for cluster topology info
     unodes = await unode_manager.list_unodes()
 
     # Get Tailscale status (single source of truth)
     ts_status = get_tailscale_status()
     tailscale_hostname = ts_status.hostname  # e.g., "blue.spangled-kettle.ts.net"
     api_port = 8000
+
+    # Build main API URLs
+    if tailscale_hostname:
+        ushadow_api_url = f"https://{tailscale_hostname}"
+    else:
+        ushadow_api_url = f"http://{leader.tailscale_ip}:{api_port}"
 
     # Build service deployments with URLs from compose registry
     from src.services.compose_registry import get_compose_registry
@@ -422,6 +435,11 @@ async def get_leader_info():
     # Get Chronicle service route_path for WebSocket URLs
     chronicle_service = compose_registry.get_service_by_name("chronicle-backend")
     chronicle_route = chronicle_service.route_path if chronicle_service else None
+
+    # Build Chronicle API URL
+    chronicle_api_url = None
+    if tailscale_hostname and chronicle_route:
+        chronicle_api_url = f"https://{tailscale_hostname}{chronicle_route}"
 
     # Build WebSocket URLs from Chronicle's route_path
     ws_pcm_url = None
@@ -483,6 +501,8 @@ async def get_leader_info():
         tailscale_hostname=tailscale_hostname,
         capabilities=leader.capabilities,
         api_port=api_port,
+        ushadow_api_url=ushadow_api_url,
+        chronicle_api_url=chronicle_api_url,
         ws_pcm_url=ws_pcm_url,
         ws_omi_url=ws_omi_url,
         unodes=unodes,

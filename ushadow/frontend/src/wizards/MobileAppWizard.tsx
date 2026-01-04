@@ -170,8 +170,8 @@ export default function MobileAppWizard() {
                 Get the Ushadow Mobile App
               </h2>
               <p className="text-gray-400 max-w-md mx-auto">
-                Control your Ushadow cluster from anywhere using our mobile app.
-                Make sure you're connected to Tailscale on your phone.
+                Stream audio from your phone or OMI device to your Ushadow server.
+                Choose the installation method that works best for you.
               </p>
             </div>
 
@@ -203,50 +203,99 @@ export default function MobileAppWizard() {
               </div>
             </div>
 
-            {/* Download Options */}
-            <div className="grid gap-4">
-              <div className="p-4 bg-[#1e2a3a] rounded-lg border border-white/10">
-                <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2">
-                  <Apple className="w-5 h-5" />
-                  iOS (iPhone/iPad)
-                </h3>
-                <p className="text-gray-400 text-sm mb-3">
-                  Coming soon to the App Store
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    For now, use Expo Go for development
+            {/* Installation Options */}
+            <div className="space-y-4">
+              {/* Option 1: Development Build (Recommended) */}
+              <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-xs font-medium rounded">
+                    RECOMMENDED
                   </span>
+                  <h3 className="text-lg font-medium text-white">
+                    Development Build
+                  </h3>
+                </div>
+                <p className="text-gray-400 text-sm mb-3">
+                  Full features including Bluetooth OMI device support. Requires a Mac for iOS or Android Studio for Android.
+                </p>
+                <div className="bg-black/30 rounded-lg p-3 font-mono text-sm">
+                  <div className="text-gray-500"># Install dependencies</div>
+                  <div className="text-indigo-300">cd ushadow/mobile && npm install</div>
+                  <div className="text-gray-500 mt-2"># Build and run on device</div>
+                  <div className="text-indigo-300">npx expo run:ios</div>
+                  <div className="text-gray-500"># or</div>
+                  <div className="text-indigo-300">npx expo run:android</div>
                 </div>
               </div>
 
+              {/* Option 2: Android APK */}
               <div className="p-4 bg-[#1e2a3a] rounded-lg border border-white/10">
                 <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2">
                   <Download className="w-5 h-5" />
-                  Android
+                  Android APK (Easiest)
                 </h3>
                 <p className="text-gray-400 text-sm mb-3">
-                  Coming soon to Google Play
+                  Build an APK file and install directly on any Android device. No app store needed.
                 </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    For now, use Expo Go for development
-                  </span>
+                <div className="bg-black/30 rounded-lg p-3 font-mono text-sm mb-3">
+                  <div className="text-gray-500"># Install EAS CLI and login</div>
+                  <div className="text-indigo-300">npm install -g eas-cli && eas login</div>
+                  <div className="text-gray-500 mt-2"># Build APK for internal distribution</div>
+                  <div className="text-indigo-300">cd ushadow/mobile && eas build --profile preview --platform android</div>
                 </div>
+                <p className="text-xs text-gray-500">
+                  Download the .apk from the build URL, transfer to your phone, and install (enable "Install from unknown sources" in Settings).
+                </p>
+              </div>
+
+              {/* Option 3: iOS TestFlight */}
+              <div className="p-4 bg-[#1e2a3a] rounded-lg border border-white/10">
+                <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2">
+                  <Apple className="w-5 h-5" />
+                  iOS via TestFlight
+                </h3>
+                <p className="text-gray-400 text-sm mb-3">
+                  Distribute to up to 10,000 testers via Apple's TestFlight. Requires Apple Developer account ($99/year).
+                </p>
+                <div className="bg-black/30 rounded-lg p-3 font-mono text-sm mb-3">
+                  <div className="text-gray-500"># Build for iOS</div>
+                  <div className="text-indigo-300">eas build --profile preview --platform ios</div>
+                  <div className="text-gray-500 mt-2"># Submit to TestFlight</div>
+                  <div className="text-indigo-300">eas submit --platform ios</div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  After submission, add testers by email in App Store Connect. They'll receive TestFlight invites.
+                </p>
+              </div>
+
+              {/* Option 4: Expo Go (Limited) */}
+              <div className="p-4 bg-[#1e2a3a] rounded-lg border border-white/10 opacity-75">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs font-medium rounded">
+                    LIMITED
+                  </span>
+                  <h3 className="text-lg font-medium text-white">
+                    Expo Go (Quick Testing)
+                  </h3>
+                </div>
+                <p className="text-gray-400 text-sm mb-3">
+                  Fastest setup but <strong className="text-yellow-300">no Bluetooth support</strong> (OMI device won't work).
+                  Good for testing the UI only.
+                </p>
+                <ol className="text-sm text-gray-400 space-y-1 list-decimal list-inside">
+                  <li>Install "Expo Go" from App Store or Play Store</li>
+                  <li>Run: <code className="text-indigo-300 bg-black/30 px-1.5 py-0.5 rounded text-xs">cd ushadow/mobile && npm start</code></li>
+                  <li>Scan the QR code with Expo Go</li>
+                </ol>
               </div>
             </div>
 
-            {/* Expo Go Instructions */}
-            <div className="p-4 bg-indigo-500/10 rounded-lg border border-indigo-500/30">
-              <h3 className="text-sm font-medium text-indigo-300 mb-2">
-                Development Mode (Expo Go)
-              </h3>
-              <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
-                <li>Install "Expo Go" from App Store or Play Store</li>
-                <li>Ensure your phone is connected to Tailscale</li>
-                <li>On your development machine, run: <code className="text-indigo-300 bg-black/30 px-2 py-0.5 rounded">cd ushadow/mobile && npm start</code></li>
-                <li>Scan the Expo QR code with your phone</li>
-              </ol>
+            {/* Prerequisites Note */}
+            <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/30">
+              <p className="text-sm text-blue-300">
+                <strong>Prerequisites:</strong> Node.js 18+, and for development builds: Xcode (iOS) or Android Studio (Android).
+                See <code className="bg-black/30 px-1 rounded">ushadow/mobile/README.md</code> for detailed setup.
+              </p>
             </div>
           </div>
         )

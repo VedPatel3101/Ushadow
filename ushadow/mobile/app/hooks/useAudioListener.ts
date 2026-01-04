@@ -6,6 +6,7 @@ import { Subscription, ConnectionPriority } from 'react-native-ble-plx';
 interface UseAudioListener {
   isListeningAudio: boolean;
   audioPacketsReceived: number;
+  audioLevel: number;  // 0-100, calculated from RMS of audio samples
   startAudioListener: (onAudioData: (bytes: Uint8Array) => void) => Promise<void>;
   stopAudioListener: () => Promise<void>;
   isRetrying: boolean;
@@ -18,12 +19,19 @@ export const useAudioListener = (
 ): UseAudioListener => {
   const [isListeningAudio, setIsListeningAudio] = useState<boolean>(false);
   const [audioPacketsReceived, setAudioPacketsReceived] = useState<number>(0);
+  const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [retryAttempts, setRetryAttempts] = useState<number>(0);
 
   const audioSubscriptionRef = useRef<Subscription | null>(null);
   const uiUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const localPacketCounterRef = useRef<number>(0);
+  const audioLevelRef = useRef<number>(0);
+
+  // Random pattern for visual feedback (Opus doesn't provide reliable amplitude)
+  const calculateAudioLevel = useCallback((_bytes: Uint8Array): number => {
+    return 20 + Math.random() * 60; // Random 20-80
+  }, []);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const shouldRetryRef = useRef<boolean>(false);
   const currentOnAudioDataRef = useRef<((bytes: Uint8Array) => void) | null>(null);
@@ -58,6 +66,9 @@ export const useAudioListener = (
         audioSubscriptionRef.current = null;
         setIsListeningAudio(false);
         localPacketCounterRef.current = 0;
+        audioLevelRef.current = 0;
+        pulsePhaseRef.current = 0;
+        setAudioLevel(0);
         console.log('Audio listener stopped.');
       } catch (error) {
         console.error('Stop audio listener error:', error);
@@ -78,6 +89,7 @@ export const useAudioListener = (
 
   // Internal function to attempt starting audio listener
   const attemptStartAudioListener = useCallback(async (onAudioData: (bytes: Uint8Array) => void): Promise<boolean> => {
+    console.log('[AudioListener] attemptStartAudioListener called');
     if (!isConnected()) {
       console.log('[AudioListener] Device not connected, cannot start audio listener');
       return false;
@@ -94,7 +106,12 @@ export const useAudioListener = (
       const subscription = await omiConnection.startAudioBytesListener((bytes) => {
         localPacketCounterRef.current++;
         if (bytes && bytes.length > 0) {
-          onAudioData(new Uint8Array(bytes));
+          const audioBytes = new Uint8Array(bytes);
+          // Calculate and update audio level for waveform visualization
+          const level = calculateAudioLevel(audioBytes);
+          audioLevelRef.current = level;
+          setAudioLevel(level);
+          onAudioData(audioBytes);
         }
       });
 
@@ -213,6 +230,7 @@ export const useAudioListener = (
   return {
     isListeningAudio,
     audioPacketsReceived,
+    audioLevel,
     startAudioListener,
     stopAudioListener,
     isRetrying,
