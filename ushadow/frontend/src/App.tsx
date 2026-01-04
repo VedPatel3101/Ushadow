@@ -35,6 +35,7 @@ import SettingsPage from './pages/SettingsPage'
 import MemoriesPage from './pages/MemoriesPage'
 import ClusterPage from './pages/ClusterPage'
 import SpeakerRecognitionPage from './pages/SpeakerRecognitionPage'
+import ChatPage from './pages/ChatPage'
 
 // Wizards (all use WizardShell pattern)
 import {
@@ -91,6 +92,7 @@ function AppContent() {
                 <Route path="agent-zero" element={<FeatureRoute featureFlag="agent_zero"><AgentZeroPage /></FeatureRoute>} />
                 <Route path="n8n" element={<FeatureRoute featureFlag="n8n_workflows"><N8NPage /></FeatureRoute>} />
                 <Route path="services" element={<ServicesPage />} />
+                <Route path="chat" element={<ChatPage />} />
                 <Route path="memories" element={<MemoriesPage />} />
                 <Route path="cluster" element={<ClusterPage />} />
                 <Route path="kubernetes" element={<KubernetesClustersPage />} />
