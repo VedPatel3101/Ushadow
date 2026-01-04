@@ -364,21 +364,22 @@ class UNodeManager:
         )
 
     def _generate_bootstrap_bash(self, token: str, base_url: str) -> str:
-        """Generate a bash bootstrap command using public bootstrap script."""
-        # Public bootstrap script installs Docker + Tailscale
-        # After connecting to Tailscale, user runs the join command separately
-        join_cmd = f'curl -sL "{base_url}/api/unodes/join/{token}" | sh'
-        script = f'''curl -fsSL https://ushadow.io/bootstrap.sh | bash; echo ""; echo "After connecting to Tailscale, run:"; echo '{join_cmd}' '''
-        return script
+        """Generate a bash bootstrap command using public bootstrap script.
+        
+        Sets JOIN_URL env var so bootstrap.sh automatically joins the cluster
+        after installing Docker + Tailscale.
+        """
+        join_url = f"{base_url}/api/unodes/join/{token}"
+        return f'JOIN_URL="{join_url}" bash -c "$(curl -fsSL https://ushadow.io/bootstrap.sh)"'
 
     def _generate_bootstrap_powershell(self, token: str, base_url: str) -> str:
-        """Generate a PowerShell bootstrap command using public bootstrap script."""
-        # Public bootstrap script installs Docker + Tailscale
-        # After connecting to Tailscale, user runs the join command separately
-        # Use irm (Invoke-RestMethod) which returns string, not bytes like iwr
-        join_cmd = f'iex (irm "{base_url}/api/unodes/join/{token}/ps1")'
-        script = f'''iex (irm https://ushadow.io/bootstrap.ps1); Write-Host "`nAfter connecting to Tailscale, run:`n{join_cmd}" -ForegroundColor Cyan'''
-        return script
+        """Generate a PowerShell bootstrap command using public bootstrap script.
+        
+        Sets JOIN_URL env var so bootstrap.ps1 automatically joins the cluster
+        after installing Docker + Tailscale.
+        """
+        join_url = f"{base_url}/api/unodes/join/{token}/ps1"
+        return f'$env:JOIN_URL="{join_url}"; iex (irm https://ushadow.io/bootstrap.ps1)'
 
     async def get_bootstrap_script_bash(self, token: str) -> str:
         """Generate the full bootstrap script for bash (served via public URL)."""
