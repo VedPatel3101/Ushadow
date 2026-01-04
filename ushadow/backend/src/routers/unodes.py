@@ -420,6 +420,12 @@ async def get_leader_info():
     tailscale_hostname = ts_status.hostname  # e.g., "blue.spangled-kettle.ts.net"
     api_port = 8000
 
+    # Build main API URLs
+    if tailscale_hostname:
+        ushadow_api_url = f"https://{tailscale_hostname}"
+    else:
+        ushadow_api_url = f"http://{leader.tailscale_ip}:{api_port}"
+
     # Build service deployments with URLs from compose registry
     from src.services.compose_registry import get_compose_registry
 
@@ -429,6 +435,11 @@ async def get_leader_info():
     # Get Chronicle service route_path for WebSocket URLs
     chronicle_service = compose_registry.get_service_by_name("chronicle-backend")
     chronicle_route = chronicle_service.route_path if chronicle_service else None
+
+    # Build Chronicle API URL
+    chronicle_api_url = None
+    if tailscale_hostname and chronicle_route:
+        chronicle_api_url = f"https://{tailscale_hostname}{chronicle_route}"
 
     # Build WebSocket URLs from Chronicle's route_path
     ws_pcm_url = None

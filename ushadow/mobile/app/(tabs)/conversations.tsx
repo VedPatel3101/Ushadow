@@ -17,6 +17,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, colors, spacing, borderRadius, fontSize } from '../theme';
 import { fetchConversations, Conversation } from '../services/chronicleApi';
@@ -63,6 +64,13 @@ export default function ConversationsScreen() {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Refresh when screen regains focus (e.g., after scanning QR code)
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
+  );
 
   const handleRefresh = useCallback(() => {
     loadConversations(true);

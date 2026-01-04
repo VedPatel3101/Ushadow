@@ -6,6 +6,7 @@ import { Subscription, ConnectionPriority } from 'react-native-ble-plx';
 interface UseAudioListener {
   isListeningAudio: boolean;
   audioPacketsReceived: number;
+  audioLevel: number;  // 0-100, calculated from RMS of audio samples
   startAudioListener: (onAudioData: (bytes: Uint8Array) => void) => Promise<void>;
   stopAudioListener: () => Promise<void>;
   isRetrying: boolean;
@@ -18,12 +19,54 @@ export const useAudioListener = (
 ): UseAudioListener => {
   const [isListeningAudio, setIsListeningAudio] = useState<boolean>(false);
   const [audioPacketsReceived, setAudioPacketsReceived] = useState<number>(0);
+  const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [retryAttempts, setRetryAttempts] = useState<number>(0);
 
   const audioSubscriptionRef = useRef<Subscription | null>(null);
   const uiUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const localPacketCounterRef = useRef<number>(0);
+  const audioLevelRef = useRef<number>(0);
+
+  // Calculate audio activity level from encoded audio bytes (Opus codec)
+  // For compressed audio, we measure byte variance as a proxy for audio activity
+  // Silence = low variance (compression produces predictable patterns)
+  // Speech/sound = higher variance (more entropy in compressed data)
+  const calculateAudioLevel = useCallback((bytes: Uint8Array): number => {
+    if (bytes.length < 10) return 0;
+
+    // Calculate mean of bytes
+    let sum = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      sum += bytes[i];
+    }
+    const mean = sum / bytes.length;
+
+    // Calculate variance (standard deviation squared)
+    let varianceSum = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      const diff = bytes[i] - mean;
+      varianceSum += diff * diff;
+    }
+    const variance = varianceSum / bytes.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Debug: log every 50th packet to see actual stdDev values
+    if (localPacketCounterRef.current % 50 === 0) {
+      console.log(`[AudioListener] Packet ${localPacketCounterRef.current}: stdDev=${stdDev.toFixed(2)}, bytes=${bytes.length}`);
+    }
+
+    // Normalize stdDev to 0-100 range
+    // For Opus, typical stdDev ranges from ~20 (silence) to ~75 (loud speech)
+    // Map this range to 0-100 with some headroom
+    const minStdDev = 25;  // Below this is silence
+    const maxStdDev = 70;  // Above this is loud
+    const normalized = Math.max(0, Math.min(100,
+      ((stdDev - minStdDev) / (maxStdDev - minStdDev)) * 100
+    ));
+
+    return normalized;
+  }, []);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const shouldRetryRef = useRef<boolean>(false);
   const currentOnAudioDataRef = useRef<((bytes: Uint8Array) => void) | null>(null);
@@ -58,6 +101,8 @@ export const useAudioListener = (
         audioSubscriptionRef.current = null;
         setIsListeningAudio(false);
         localPacketCounterRef.current = 0;
+        audioLevelRef.current = 0;
+        setAudioLevel(0);
         console.log('Audio listener stopped.');
       } catch (error) {
         console.error('Stop audio listener error:', error);
@@ -78,6 +123,7 @@ export const useAudioListener = (
 
   // Internal function to attempt starting audio listener
   const attemptStartAudioListener = useCallback(async (onAudioData: (bytes: Uint8Array) => void): Promise<boolean> => {
+    console.log('[AudioListener] attemptStartAudioListener called');
     if (!isConnected()) {
       console.log('[AudioListener] Device not connected, cannot start audio listener');
       return false;
@@ -93,8 +139,17 @@ export const useAudioListener = (
     try {
       const subscription = await omiConnection.startAudioBytesListener((bytes) => {
         localPacketCounterRef.current++;
+        // Log first 5 packets and then every 100th to confirm data flow
+        if (localPacketCounterRef.current <= 5 || localPacketCounterRef.current % 100 === 0) {
+          console.log(`[AudioListener] Received packet #${localPacketCounterRef.current}, size=${bytes?.length || 0}`);
+        }
         if (bytes && bytes.length > 0) {
-          onAudioData(new Uint8Array(bytes));
+          const audioBytes = new Uint8Array(bytes);
+          // Calculate and update audio level for waveform visualization
+          const level = calculateAudioLevel(audioBytes);
+          audioLevelRef.current = level;
+          setAudioLevel(level);
+          onAudioData(audioBytes);
         }
       });
 
@@ -213,6 +268,7 @@ export const useAudioListener = (
   return {
     isListeningAudio,
     audioPacketsReceived,
+    audioLevel,
     startAudioListener,
     stopAudioListener,
     isRetrying,

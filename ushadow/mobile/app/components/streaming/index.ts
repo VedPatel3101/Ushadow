@@ -10,6 +10,7 @@ export { StreamingButton } from './StreamingButton';
 export { SourceSelector } from './SourceSelector';
 export { DestinationSelector } from './DestinationSelector';
 export { UnifiedStreamingPage } from './UnifiedStreamingPage';
+export { GettingStartedCard } from './GettingStartedCard';
 
 // Types
 export type { StreamSource } from './SourceSelector';

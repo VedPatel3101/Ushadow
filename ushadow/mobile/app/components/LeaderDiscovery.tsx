@@ -285,7 +285,7 @@ export const LeaderDiscovery: React.FC<LeaderDiscoveryProps> = ({
       </TouchableOpacity>
 
       <Text style={styles.helperText}>
-        Click on the leader node in your Ushadow dashboard to show the QR code
+        Start your Ushadow server, then scan the QR code shown in the terminal or web dashboard
       </Text>
 
       {/* Scanned Server Card - Show if available */}

@@ -18,6 +18,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, colors, spacing, borderRadius, fontSize } from '../theme';
 import { searchMemories, fetchMemories, Memory } from '../services/chronicleApi';
@@ -70,6 +71,13 @@ export default function MemoriesScreen() {
   useEffect(() => {
     loadMemories();
   }, [loadMemories]);
+
+  // Refresh when screen regains focus (e.g., after scanning QR code)
+  useFocusEffect(
+    useCallback(() => {
+      loadMemories();
+    }, [loadMemories])
+  );
 
   const handleRefresh = useCallback(() => {
     loadMemories(searchQuery || undefined, true);

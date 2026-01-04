@@ -26,6 +26,7 @@ import { SourceSelector, StreamSource } from './SourceSelector';
 import { DestinationSelector, AuthStatus } from './DestinationSelector';
 import { StreamingDisplay } from './StreamingDisplay';
 import { StreamingButton } from './StreamingButton';
+import { GettingStartedCard } from './GettingStartedCard';
 import { OmiDeviceScanner } from '../OmiDeviceScanner';
 import { LeaderDiscovery } from '../LeaderDiscovery';
 
@@ -116,6 +117,7 @@ export const UnifiedStreamingPage: React.FC<UnifiedStreamingPageProps> = ({
   // OMI audio listener
   const {
     isListeningAudio,
+    audioLevel: omiAudioLevel,
     startAudioListener,
     stopAudioListener,
   } = useAudioListener(omiConnection, isOmiConnected);
@@ -150,7 +152,7 @@ export const UnifiedStreamingPage: React.FC<UnifiedStreamingPageProps> = ({
 
   const audioLevel = selectedSource.type === 'microphone'
     ? phoneStreaming.audioLevel
-    : 50; // OMI doesn't provide audio level, use placeholder
+    : omiAudioLevel;
 
   const error = selectedSource.type === 'microphone'
     ? phoneStreaming.error
@@ -520,6 +522,14 @@ export const UnifiedStreamingPage: React.FC<UnifiedStreamingPageProps> = ({
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* Getting Started - show when no UNodes configured */}
+        {unodes.length === 0 && !isStreaming && (
+          <GettingStartedCard
+            onAddUNode={() => setShowUnodeDiscovery(true)}
+            testID={`${testID}-getting-started`}
+          />
+        )}
+
         {/* Source Selector */}
         <SourceSelector
           selectedSource={selectedSource}

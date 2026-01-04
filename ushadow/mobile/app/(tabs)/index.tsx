@@ -15,6 +15,7 @@ import {
   Image,
   TouchableOpacity,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -70,6 +71,29 @@ export default function HomeScreen() {
     };
     loadAuthState();
   }, [logEvent]);
+
+  // Refresh auth state when screen regains focus (e.g., after scanning QR code)
+  useFocusEffect(
+    useCallback(() => {
+      const refreshAuthState = async () => {
+        const authenticated = await isAuthenticated();
+        if (authenticated) {
+          const token = await getAuthToken();
+          const info = await getAuthInfo();
+          // Only update if token changed
+          if (token !== authToken) {
+            setAuthToken(token);
+            setAuthInfo(info);
+          }
+        } else if (authToken) {
+          // Token was cleared or expired
+          setAuthToken(null);
+          setAuthInfo(null);
+        }
+      };
+      refreshAuthState();
+    }, [authToken])
+  );
 
   const handleLoginSuccess = useCallback(
     async (token: string, apiUrl: string) => {
