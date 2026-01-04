@@ -419,15 +419,19 @@ def ensure_secrets_yaml(secrets_file: str) -> Tuple[bool, dict]:
         with open(secrets_path, 'w') as f:
             # Write header comment
             f.write(f"# Ushadow Secrets\n")
-            f.write(f"# Generated: {subprocess.check_output(['date', '-u', '+%Y-%m-%dT%H:%M:%SZ'], text=True).strip()}\n")
+            from datetime import datetime, timezone
+            f.write(f"# Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
             f.write(f"# DO NOT COMMIT - Contains sensitive credentials\n")
             f.write(f"# This file is gitignored\n\n")
 
             # Write YAML data
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
 
-        # Set restrictive permissions
-        secrets_path.chmod(0o600)
+        # Set restrictive permissions (Unix only)
+        try:
+            secrets_path.chmod(0o600)
+        except (OSError, NotImplementedError):
+            pass  # Windows doesn't support chmod
 
         return created_new, data
 
