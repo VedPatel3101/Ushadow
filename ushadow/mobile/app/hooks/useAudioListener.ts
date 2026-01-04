@@ -28,44 +28,9 @@ export const useAudioListener = (
   const localPacketCounterRef = useRef<number>(0);
   const audioLevelRef = useRef<number>(0);
 
-  // Calculate audio activity level from encoded audio bytes (Opus codec)
-  // For compressed audio, we measure byte variance as a proxy for audio activity
-  // Silence = low variance (compression produces predictable patterns)
-  // Speech/sound = higher variance (more entropy in compressed data)
-  const calculateAudioLevel = useCallback((bytes: Uint8Array): number => {
-    if (bytes.length < 10) return 0;
-
-    // Calculate mean of bytes
-    let sum = 0;
-    for (let i = 0; i < bytes.length; i++) {
-      sum += bytes[i];
-    }
-    const mean = sum / bytes.length;
-
-    // Calculate variance (standard deviation squared)
-    let varianceSum = 0;
-    for (let i = 0; i < bytes.length; i++) {
-      const diff = bytes[i] - mean;
-      varianceSum += diff * diff;
-    }
-    const variance = varianceSum / bytes.length;
-    const stdDev = Math.sqrt(variance);
-
-    // Debug: log every 50th packet to see actual stdDev values
-    if (localPacketCounterRef.current % 50 === 0) {
-      console.log(`[AudioListener] Packet ${localPacketCounterRef.current}: stdDev=${stdDev.toFixed(2)}, bytes=${bytes.length}`);
-    }
-
-    // Normalize stdDev to 0-100 range
-    // For Opus, typical stdDev ranges from ~20 (silence) to ~75 (loud speech)
-    // Map this range to 0-100 with some headroom
-    const minStdDev = 25;  // Below this is silence
-    const maxStdDev = 70;  // Above this is loud
-    const normalized = Math.max(0, Math.min(100,
-      ((stdDev - minStdDev) / (maxStdDev - minStdDev)) * 100
-    ));
-
-    return normalized;
+  // Random pattern for visual feedback (Opus doesn't provide reliable amplitude)
+  const calculateAudioLevel = useCallback((_bytes: Uint8Array): number => {
+    return 20 + Math.random() * 60; // Random 20-80
   }, []);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const shouldRetryRef = useRef<boolean>(false);
@@ -102,6 +67,7 @@ export const useAudioListener = (
         setIsListeningAudio(false);
         localPacketCounterRef.current = 0;
         audioLevelRef.current = 0;
+        pulsePhaseRef.current = 0;
         setAudioLevel(0);
         console.log('Audio listener stopped.');
       } catch (error) {
@@ -139,10 +105,6 @@ export const useAudioListener = (
     try {
       const subscription = await omiConnection.startAudioBytesListener((bytes) => {
         localPacketCounterRef.current++;
-        // Log first 5 packets and then every 100th to confirm data flow
-        if (localPacketCounterRef.current <= 5 || localPacketCounterRef.current % 100 === 0) {
-          console.log(`[AudioListener] Received packet #${localPacketCounterRef.current}, size=${bytes?.length || 0}`);
-        }
         if (bytes && bytes.length > 0) {
           const audioBytes = new Uint8Array(bytes);
           // Calculate and update audio level for waveform visualization

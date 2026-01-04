@@ -5,8 +5,8 @@
  * duration timer, and audio level indicator.
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, theme, spacing, borderRadius, fontSize } from '../../theme';
 
@@ -18,8 +18,8 @@ interface StreamingDisplayProps {
   testID?: string;
 }
 
-const WAVEFORM_BARS = 32;
-const WAVEFORM_UPDATE_INTERVAL = 100; // ms
+const MONITOR_POINTS = 40;
+const MONITOR_UPDATE_INTERVAL = 50; // ms - faster for smooth sweep
 
 export const StreamingDisplay: React.FC<StreamingDisplayProps> = ({
   isStreaming,
@@ -29,20 +29,8 @@ export const StreamingDisplay: React.FC<StreamingDisplayProps> = ({
   testID = 'streaming-display',
 }) => {
   const [duration, setDuration] = useState<number>(0);
-  const [waveformData, setWaveformData] = useState<number[]>(
-    Array(WAVEFORM_BARS).fill(0.1)
-  );
-
-  // Animation values for bars
-  const barAnimations = useRef<Animated.Value[]>(
-    Array(WAVEFORM_BARS).fill(0).map(() => new Animated.Value(0.1))
-  ).current;
-
-  // Store audioLevel in ref so waveform animation can read it without re-triggering
-  const audioLevelRef = useRef(audioLevel);
-  useEffect(() => {
-    audioLevelRef.current = audioLevel;
-  }, [audioLevel]);
+  const [blipPosition, setBlipPosition] = useState<number>(0);
+  const [trailData, setTrailData] = useState<number[]>(Array(MONITOR_POINTS).fill(0));
 
   // Duration timer
   useEffect(() => {
@@ -60,45 +48,50 @@ export const StreamingDisplay: React.FC<StreamingDisplayProps> = ({
     return () => clearInterval(interval);
   }, [isStreaming, startTime]);
 
-  // Waveform animation
+  // Heartrate monitor animation - blip sweeps across
   useEffect(() => {
     if (!isStreaming) {
-      // Reset waveform when not streaming
-      barAnimations.forEach((anim) => {
-        Animated.timing(anim, {
-          toValue: 0.1,
-          duration: 200,
-          useNativeDriver: false,
-        }).start();
-      });
+      setBlipPosition(0);
+      setTrailData(Array(MONITOR_POINTS).fill(0));
       return;
     }
 
     const interval = setInterval(() => {
-      // Generate new waveform data based on audio level (read from ref to avoid effect restart)
-      const currentLevel = audioLevelRef.current;
-      const newData = Array(WAVEFORM_BARS).fill(0).map((_, index) => {
-        // Create wave-like pattern centered around the audio level
-        const baseLevel = currentLevel / 100;
-        const variance = Math.random() * 0.4 - 0.2;
-        const centerBias = 1 - Math.abs(index - WAVEFORM_BARS / 2) / (WAVEFORM_BARS / 2) * 0.3;
-        return Math.max(0.1, Math.min(1, baseLevel * centerBias + variance));
-      });
+      setBlipPosition((prev) => {
+        const next = (prev + 1) % MONITOR_POINTS;
 
-      setWaveformData(newData);
+        // Update trail data - create a spike at current position
+        setTrailData((trail) => {
+          const newTrail = [...trail];
+          // Create ECG-like spike pattern around blip position
+          for (let i = 0; i < MONITOR_POINTS; i++) {
+            const distFromBlip = Math.abs(i - next);
+            if (distFromBlip === 0) {
+              // Main spike
+              newTrail[i] = 0.8 + Math.random() * 0.2;
+            } else if (distFromBlip === 1) {
+              // Shoulder
+              newTrail[i] = 0.3 + Math.random() * 0.1;
+            } else if (distFromBlip === 2) {
+              // Small dip
+              newTrail[i] = -0.1;
+            } else if (i < next - 3) {
+              // Fade trail behind blip
+              newTrail[i] = Math.max(0, newTrail[i] * 0.85);
+            } else if (i > next + 2) {
+              // Clear ahead of blip
+              newTrail[i] = 0;
+            }
+          }
+          return newTrail;
+        });
 
-      // Animate bars
-      newData.forEach((value, index) => {
-        Animated.timing(barAnimations[index], {
-          toValue: value,
-          duration: WAVEFORM_UPDATE_INTERVAL - 10,
-          useNativeDriver: false,
-        }).start();
+        return next;
       });
-    }, WAVEFORM_UPDATE_INTERVAL);
+    }, MONITOR_UPDATE_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [isStreaming, barAnimations]);
+  }, [isStreaming]);
 
   const formatDuration = (seconds: number): string => {
     const hrs = Math.floor(seconds / 3600);
@@ -141,27 +134,34 @@ export const StreamingDisplay: React.FC<StreamingDisplayProps> = ({
         </View>
       )}
 
-      {/* Waveform Visualization */}
-      <View style={styles.waveformContainer} testID="streaming-waveform">
-        {barAnimations.map((anim, index) => (
-          <Animated.View
-            key={index}
-            style={[
-              styles.waveformBar,
-              {
-                height: anim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['10%', '100%'],
-                }),
-                backgroundColor: isStreaming ? colors.accent[400] : theme.textMuted,
-                opacity: anim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.3, 1],
-                }),
-              },
-            ]}
-          />
-        ))}
+      {/* Heartrate Monitor Visualization */}
+      <View style={styles.monitorContainer} testID="streaming-waveform">
+        <View style={styles.monitorLine}>
+          {trailData.map((value, index) => (
+            <View
+              key={index}
+              style={[
+                styles.monitorPoint,
+                {
+                  height: Math.abs(value) * 50 + 2,
+                  marginTop: value < 0 ? 25 : 25 - (value * 50),
+                  backgroundColor: isStreaming
+                    ? index === blipPosition
+                      ? colors.accent[300]
+                      : colors.accent[400]
+                    : theme.textMuted,
+                  opacity: isStreaming
+                    ? index === blipPosition
+                      ? 1
+                      : Math.max(0.2, 1 - Math.abs(index - blipPosition) * 0.08)
+                    : 0.3,
+                },
+              ]}
+            />
+          ))}
+        </View>
+        {/* Baseline */}
+        <View style={styles.monitorBaseline} />
       </View>
 
       {/* Audio Level Indicator with dB - only show when streaming */}
@@ -230,18 +230,31 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     fontFamily: 'monospace',
   },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  monitorContainer: {
     height: 60,
-    gap: 2,
     marginBottom: spacing.md,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  waveformBar: {
+  monitorLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 50,
+    gap: 1,
+  },
+  monitorPoint: {
     flex: 1,
-    borderRadius: 2,
-    minHeight: 6,
+    borderRadius: 1,
+    minHeight: 2,
+  },
+  monitorBaseline: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: theme.textMuted,
+    opacity: 0.2,
   },
   levelContainer: {
     flexDirection: 'row',
