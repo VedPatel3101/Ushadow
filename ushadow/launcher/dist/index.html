@@ -789,8 +789,8 @@
       <p class="launch-message" style="font-size: 0.85rem; margin-top: 1rem;">This will start infrastructure and create your first environment</p>
     </div>
 
-    <!-- Two-Column Layout -->
-    <div class="two-column">
+    <!-- Two-Column Layout (hidden initially until status checked) -->
+    <div class="two-column hidden">
       <!-- Left Column: Infrastructure -->
       <div class="card" id="infra-card">
         <!-- Prerequisites Section (Collapsible) -->
@@ -883,6 +883,7 @@
     let projectRoot = null;
     let prerequisites = null;
     let isStarting = false;
+    let isLaunching = false; // Track if we're in launch sequence
 
     // Elements
     const errorBanner = document.getElementById('error-banner');
@@ -1345,18 +1346,21 @@
         const hasEnvs = discovery.environments && discovery.environments.length > 0;
 
         // Show/hide launch button vs two-column layout
-        if (!infraRunning && !hasEnvs) {
-          // Nothing running - show big launch button
-          launchContainer.classList.remove('hidden');
-          twoColumn.classList.add('hidden');
+        // Don't change UI if we're in the middle of launching
+        if (!isLaunching) {
+          if (!infraRunning && !hasEnvs) {
+            // Nothing running - show big launch button
+            launchContainer.classList.remove('hidden');
+            twoColumn.classList.add('hidden');
 
-          // Always enable launch button - it handles prerequisite installation
-          launchBtn.disabled = false;
-          log('Launch container shown - button enabled');
-        } else {
-          // Something running - show normal UI
-          launchContainer.classList.add('hidden');
-          twoColumn.classList.remove('hidden');
+            // Always enable launch button - it handles prerequisite installation
+            launchBtn.disabled = false;
+            log('Launch container shown - button enabled');
+          } else {
+            // Something running - show normal UI
+            launchContainer.classList.add('hidden');
+            twoColumn.classList.remove('hidden');
+          }
         }
 
         // Render infrastructure
@@ -1475,6 +1479,7 @@
       }
 
       isStarting = true;
+      isLaunching = true; // Mark that we're in launch sequence
       launchBtn.disabled = true;
       setButtonLoading(launchBtn, true, 'Checking prerequisites...', '🚀 Launch Ushadow');
 
@@ -1519,20 +1524,45 @@
 
         // If Docker is not installed, open installer and wait
         if (!prerequisites?.docker_installed) {
-          log('Docker is not installed. Opening Docker installer for ' + platform + '...', 'error');
+          log('Docker is not installed. Installing for ' + platform + '...', 'error');
           prereqStatusEl.textContent = 'Installing Docker...';
           prereqStatusEl.className = 'prereq-status warning';
 
-          // Open platform-specific Docker download page
-          await invoke('open_browser', { url: installUrls.docker });
+          if (platform === 'macos') {
+            // Auto-install via Homebrew on macOS
+            try {
+              log('🍺 Installing Docker via Homebrew...');
+              const brewResult = await invoke('install_docker_via_brew');
+              log(brewResult);
+              log('✅ Docker installed successfully!');
+              log('Starting Docker Desktop...');
 
-          if (platform === 'linux') {
+              // Start Docker Desktop
+              try {
+                const startResult = await invoke('start_docker_desktop_macos');
+                log(startResult);
+              } catch (startErr) {
+                log('Failed to auto-start Docker: ' + startErr, 'warning');
+                log('⏳ Please start Docker Desktop manually...');
+              }
+            } catch (brewErr) {
+              log('Homebrew installation failed: ' + brewErr, 'error');
+              log('Opening Docker download page instead...');
+              await invoke('open_browser', { url: installUrls.docker });
+              log('⏳ Please install Docker Desktop manually and start it...');
+            }
+          } else if (platform === 'linux') {
+            // Open instructions for Linux (manual installation required)
+            await invoke('open_browser', { url: installUrls.docker });
             log('⏳ Please install Docker using your package manager, then start the Docker service.');
             log('   Ubuntu/Debian: sudo apt-get install docker.io && sudo systemctl start docker');
             log('   Fedora: sudo dnf install docker && sudo systemctl start docker');
             log('   Then this will continue automatically...');
           } else {
-            log('⏳ Please install Docker Desktop and start it, then this will continue automatically...');
+            // Windows - open installer
+            await invoke('open_browser', { url: installUrls.docker });
+            log('⏳ Please install Docker Desktop and start it...');
+            log('   After installation completes, Docker Desktop should start automatically...');
           }
 
           // Poll for Docker installation (check every 5 seconds)
@@ -1543,19 +1573,53 @@
             if (prerequisites?.docker_installed && !prerequisites?.docker_running) {
               log('Docker installed! Waiting for Docker to start...');
               prereqStatusEl.textContent = 'Starting Docker...';
+
+              // Auto-start Docker Desktop on Windows after installation
+              if (platform === 'windows') {
+                try {
+                  log('Attempting to start Docker Desktop...');
+                  const startResult = await invoke('start_docker_desktop_windows');
+                  log(startResult);
+                } catch (err) {
+                  log('Auto-start attempt: ' + err, 'info');
+                }
+              }
             }
           }
 
           log('✅ Docker is now running!');
         } else if (!prerequisites?.docker_running) {
-          log('Docker is installed but not running. Please start Docker...', 'error');
+          log('Docker is installed but not running. Starting Docker...', 'error');
           prereqStatusEl.textContent = 'Starting Docker...';
           prereqStatusEl.className = 'prereq-status warning';
 
-          if (platform === 'linux') {
-            log('⏳ Please start Docker service: sudo systemctl start docker');
-          } else {
-            log('⏳ Please start Docker Desktop...');
+          if (platform === 'macos') {
+            try {
+              log('Starting Docker Desktop on macOS...');
+              const startResult = await invoke('start_docker_desktop_macos');
+              log(startResult);
+            } catch (err) {
+              log('Failed to auto-start Docker: ' + err, 'warning');
+              log('⏳ Please start Docker Desktop manually...');
+            }
+          } else if (platform === 'windows') {
+            try {
+              log('Starting Docker Desktop on Windows...');
+              const startResult = await invoke('start_docker_desktop_windows');
+              log(startResult);
+            } catch (err) {
+              log('Failed to auto-start Docker: ' + err, 'warning');
+              log('⏳ Please start Docker Desktop manually...');
+            }
+          } else if (platform === 'linux') {
+            try {
+              log('Starting Docker service on Linux...');
+              const startResult = await invoke('start_docker_service_linux');
+              log(startResult);
+            } catch (err) {
+              log('Failed to auto-start Docker: ' + err, 'warning');
+              log('⏳ Please start Docker service manually: sudo systemctl start docker');
+            }
           }
 
           // Poll for Docker to start
@@ -1741,6 +1805,7 @@
         hideCreatingStatus(document.getElementById('envs-card'));
       } finally {
         isStarting = false;
+        isLaunching = false; // Clear launch sequence flag
         setButtonLoading(launchBtn, false, 'Launching...', '🚀 Launch Ushadow');
         await discoverEnvironments();
       }
