@@ -1,8 +1,26 @@
 use crate::models::PrerequisiteStatus;
 use super::utils::silent_command;
+use std::env;
+
+/// Check if we're in mock mode
+fn is_mock_mode() -> bool {
+    env::var("MOCK_MODE").unwrap_or_default() == "true"
+}
 
 /// Check if Docker is installed and running
 pub fn check_docker() -> (bool, bool, Option<String>) {
+    // Mock mode for testing
+    if is_mock_mode() {
+        let installed = env::var("MOCK_DOCKER_INSTALLED").unwrap_or_default() == "true";
+        let running = env::var("MOCK_DOCKER_RUNNING").unwrap_or_default() == "true";
+        let version = if installed {
+            Some("Docker version 24.0.0 (MOCKED)".to_string())
+        } else {
+            None
+        };
+        return (installed, running, version);
+    }
+
     let version_output = silent_command("docker").args(["--version"]).output();
 
     let (installed, version) = match version_output {
@@ -25,6 +43,18 @@ pub fn check_docker() -> (bool, bool, Option<String>) {
 
 /// Check if Tailscale is installed and connected
 pub fn check_tailscale() -> (bool, bool, Option<String>) {
+    // Mock mode for testing
+    if is_mock_mode() {
+        let installed = env::var("MOCK_TAILSCALE_INSTALLED").unwrap_or_default() == "true";
+        let connected = installed; // If installed, assume connected in mock mode
+        let version = if installed {
+            Some("1.56.0 (MOCKED)".to_string())
+        } else {
+            None
+        };
+        return (installed, connected, version);
+    }
+
     let version_output = silent_command("tailscale").args(["--version"]).output();
 
     let (installed, version) = match version_output {
@@ -69,6 +99,13 @@ pub fn check_prerequisites() -> Result<PrerequisiteStatus, String> {
 /// Get OS type for platform-specific instructions
 #[tauri::command]
 pub fn get_os_type() -> Result<String, String> {
+    // Mock mode for testing
+    if is_mock_mode() {
+        if let Ok(mock_platform) = env::var("MOCK_PLATFORM") {
+            return Ok(mock_platform);
+        }
+    }
+
     #[cfg(target_os = "macos")]
     return Ok("macos".to_string());
 

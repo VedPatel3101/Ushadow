@@ -9,7 +9,8 @@ mod models;
 use commands::{AppState, check_prerequisites, get_os_type, discover_environments,
     start_containers, stop_containers, get_container_status,
     check_backend_health, check_webui_health, open_browser, set_project_root,
-    create_environment};
+    create_environment, install_docker_via_brew, start_docker_desktop_macos,
+    start_docker_desktop_windows, start_docker_service_linux};
 use tauri::{
     CustomMenuItem, Manager, Menu, MenuItem, SystemTray,
     SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Submenu,
@@ -80,12 +81,9 @@ fn main() {
             },
             _ => {}
         })
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
-                // Hide window instead of closing (keep in tray)
-                let _ = event.window().hide();
-                api.prevent_close();
-            }
+        .on_window_event(|_event| {
+            // Allow window to close normally (quit app)
+            // Previously hid window and kept in tray, but that's disabled for now
         })
         .invoke_handler(tauri::generate_handler![
             check_prerequisites,
@@ -99,6 +97,10 @@ fn main() {
             open_browser,
             discover_environments,
             create_environment,
+            install_docker_via_brew,
+            start_docker_desktop_macos,
+            start_docker_desktop_windows,
+            start_docker_service_linux,
         ])
         .setup(|app| {
             let window = app.get_window("main").unwrap();
