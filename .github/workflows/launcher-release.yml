@@ -145,7 +145,7 @@ jobs:
           cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -186,7 +186,7 @@ jobs:
           cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         working-directory: ${{ env.LAUNCHER_DIR }}
@@ -231,7 +231,7 @@ jobs:
           cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux dependencies
         run: |
