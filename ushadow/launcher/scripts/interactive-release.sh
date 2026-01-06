@@ -188,9 +188,8 @@ confirm_and_release() {
 
     git tag -a "$tag" -m "$RELEASE_NAME"
 
-    # 4. Push changes and tag
-    echo -e "${YELLOW}→ Pushing to GitHub...${NC}"
-    git push origin HEAD
+    # 4. Push tag (triggers GitHub Actions)
+    echo -e "${YELLOW}→ Pushing tag to GitHub...${NC}"
     git push origin "$tag"
 
     # 5. Trigger GitHub Actions workflow (if not all platforms, use workflow_dispatch)

@@ -37,6 +37,9 @@ on:
 env:
   LAUNCHER_DIR: ushadow/launcher
 
+permissions:
+  contents: write
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
@@ -101,29 +104,29 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: launcher-v${{ steps.get_version.outputs.version }}
-          release_name: "Ushadow Launcher - ${{ steps.get_version.outputs.release_name }}"
-          draft: ${{ inputs.draft || false }}
-          prerelease: false
-          body: |
-            ## Ushadow Launcher ${{ steps.get_version.outputs.release_name }}
+          VERSION: ${{ steps.get_version.outputs.version }}
+          RELEASE_NAME: ${{ steps.get_version.outputs.release_name }}
+          DRAFT_FLAG: ${{ inputs.draft && '--draft' || '' }}
+        run: |
+          gh release create "launcher-v$VERSION" \
+            --title "Ushadow Launcher - $RELEASE_NAME" \
+            $DRAFT_FLAG \
+            --notes "## Ushadow Launcher $RELEASE_NAME
 
-            ### Downloads
+          ### Downloads
 
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | macOS | `.dmg` | Universal binary (Intel + Apple Silicon) |
-            | Windows | `.msi` or `.exe` | Windows 10+ required |
-            | Linux | `.deb` or `.AppImage` | Requires Docker and Tailscale |
+          | Platform | File | Notes |
+          |----------|------|-------|
+          | macOS | \`.dmg\` | Universal binary (Intel + Apple Silicon) |
+          | Windows | \`.msi\` or \`.exe\` | Windows 10+ required |
+          | Linux | \`.deb\` or \`.AppImage\` | Requires Docker and Tailscale |
 
-            ### Requirements
+          ### Requirements
 
-            - Docker Desktop (or Docker Engine on Linux)
-            - Tailscale (for network connectivity)
+          - Docker Desktop (or Docker Engine on Linux)
+          - Tailscale (for network connectivity)"
 
   build-macos:
     needs: create-release
