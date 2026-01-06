@@ -1,6 +1,6 @@
 use std::process::Command;
 use std::sync::Mutex;
-use tauri::{Manager, State, WindowBuilder, WindowUrl};
+use tauri::State;
 use crate::models::{ContainerStatus, ServiceInfo};
 
 /// Application state
@@ -156,6 +156,26 @@ pub async fn check_backend_health(port: u16) -> Result<bool, String> {
     }
 }
 
+/// Check if web UI is responding
+#[tauri::command]
+pub async fn check_webui_health(port: u16) -> Result<bool, String> {
+    let url = format!("http://localhost:{}", port);
+
+    let output = Command::new("curl")
+        .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", &url])
+        .output();
+
+    match output {
+        Ok(out) => {
+            let code = String::from_utf8_lossy(&out.stdout);
+            let code_num = code.trim();
+            // Accept any 2xx or 3xx response (web UI is serving)
+            Ok(code_num.starts_with('2') || code_num.starts_with('3'))
+        }
+        Err(_) => Ok(false),
+    }
+}
+
 /// Open URL in default browser
 #[tauri::command]
 pub fn open_browser(url: String) -> Result<(), String> {
@@ -186,34 +206,7 @@ pub fn open_browser(url: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Open URL in a new app window
-#[tauri::command]
-pub fn open_in_app(app: tauri::AppHandle, url: String, title: String) -> Result<(), String> {
-    // Generate unique window label based on URL
-    let window_label = format!("env_{}", title.to_lowercase().replace(' ', "_"));
 
-    // Check if window already exists
-    if let Some(window) = app.get_window(&window_label) {
-        // Focus existing window
-        window.show().map_err(|e| e.to_string())?;
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-
-    // Create new window
-    let parsed_url = url.parse().map_err(|e| format!("Invalid URL: {}", e))?;
-    WindowBuilder::new(
-        &app,
-        window_label,
-        WindowUrl::External(parsed_url)
-    )
-    .title(title)
-    .inner_size(1200.0, 800.0)
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
 
 /// Create a new environment using go.sh
 #[tauri::command]
@@ -224,7 +217,9 @@ pub async fn create_environment(state: State<'_, AppState>, name: Option<String>
 
     let env_name = name.unwrap_or_else(|| "default".to_string());
 
+    // Run go.sh with --no-auto-open to prevent browser opening
     let output = Command::new("./go.sh")
+        .args(["--no-auto-open"])
         .current_dir(&project_root)
         .env("ENV_NAME", &env_name)
         .output()

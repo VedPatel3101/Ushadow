@@ -1,0 +1,266 @@
+name: Launcher Release
+
+on:
+  push:
+    tags:
+      - 'launcher-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      release_name:
+        description: 'Release name (e.g., "Bug Fix Update")'
+        required: false
+        type: string
+        default: ''
+      platforms:
+        description: 'Platforms to build'
+        required: false
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - macos
+          - windows
+          - linux
+          - macos,windows
+          - macos,linux
+          - windows,linux
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  LAUNCHER_DIR: ushadow/launcher
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+      release_name: ${{ steps.get_version.outputs.release_name }}
+      build_macos: ${{ steps.check_platforms.outputs.build_macos }}
+      build_windows: ${{ steps.check_platforms.outputs.build_windows }}
+      build_linux: ${{ steps.check_platforms.outputs.build_linux }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version and release info
+        id: get_version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          GIT_REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Validate version format
+            if ! echo "$INPUT_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "Error: Invalid version format. Use semver (e.g., 1.0.0)"
+              exit 1
+            fi
+            VERSION="$INPUT_VERSION"
+            if [ -n "$INPUT_RELEASE_NAME" ]; then
+              RELEASE_NAME="$INPUT_RELEASE_NAME"
+            else
+              RELEASE_NAME="v$VERSION"
+            fi
+          else
+            # Extract version from tag
+            VERSION=${GIT_REF#refs/tags/launcher-v}
+            RELEASE_NAME="v$VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Check platforms to build
+        id: check_platforms
+        env:
+          PLATFORMS: ${{ inputs.platforms || 'all' }}
+        run: |
+          if [ "$PLATFORMS" = "all" ] || [[ "$PLATFORMS" == *"macos"* ]]; then
+            echo "build_macos=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_macos=false" >> $GITHUB_OUTPUT
+          fi
+          if [ "$PLATFORMS" = "all" ] || [[ "$PLATFORMS" == *"windows"* ]]; then
+            echo "build_windows=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_windows=false" >> $GITHUB_OUTPUT
+          fi
+          if [ "$PLATFORMS" = "all" ] || [[ "$PLATFORMS" == *"linux"* ]]; then
+            echo "build_linux=true" >> $GITHUB_OUTPUT
+          else
+            echo "build_linux=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: launcher-v${{ steps.get_version.outputs.version }}
+          release_name: "Ushadow Launcher - ${{ steps.get_version.outputs.release_name }}"
+          draft: ${{ inputs.draft || false }}
+          prerelease: false
+          body: |
+            ## Ushadow Launcher ${{ steps.get_version.outputs.release_name }}
+
+            ### Downloads
+
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | macOS | `.dmg` | Universal binary (Intel + Apple Silicon) |
+            | Windows | `.msi` or `.exe` | Windows 10+ required |
+            | Linux | `.deb` or `.AppImage` | Requires Docker and Tailscale |
+
+            ### Requirements
+
+            - Docker Desktop (or Docker Engine on Linux)
+            - Tailscale (for network connectivity)
+
+  build-macos:
+    needs: create-release
+    if: needs.create-release.outputs.build_macos == 'true'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.create-release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install dependencies
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm ci
+
+      - name: Build Tauri app (Universal)
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm run build -- --target universal-apple-darwin
+
+      - name: Upload macOS artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG_FILE=$(find "$LAUNCHER_DIR/src-tauri/target/universal-apple-darwin/release/bundle/dmg" -name "*.dmg" 2>/dev/null | head -1)
+          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+            gh release upload "launcher-v$VERSION" "$DMG_FILE" --clobber
+            echo "✓ Uploaded $(basename "$DMG_FILE")"
+          else
+            echo "Warning: No DMG file found"
+          fi
+
+  build-windows:
+    needs: create-release
+    if: needs.create-release.outputs.build_windows == 'true'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.create-release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install dependencies
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm run build
+
+      - name: Upload Windows artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # Upload MSI
+          MSI_FILE=$(find "$LAUNCHER_DIR/src-tauri/target/release/bundle/msi" -name "*.msi" 2>/dev/null | head -1)
+          if [ -n "$MSI_FILE" ] && [ -f "$MSI_FILE" ]; then
+            gh release upload "launcher-v$VERSION" "$MSI_FILE" --clobber
+            echo "✓ Uploaded $(basename "$MSI_FILE")"
+          fi
+          # Upload NSIS installer
+          NSIS_FILE=$(find "$LAUNCHER_DIR/src-tauri/target/release/bundle/nsis" -name "*.exe" 2>/dev/null | head -1)
+          if [ -n "$NSIS_FILE" ] && [ -f "$NSIS_FILE" ]; then
+            gh release upload "launcher-v$VERSION" "$NSIS_FILE" --clobber
+            echo "✓ Uploaded $(basename "$NSIS_FILE")"
+          fi
+
+  build-linux:
+    needs: create-release
+    if: needs.create-release.outputs.build_linux == 'true'
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.create-release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.LAUNCHER_DIR }}/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install dependencies
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: ${{ env.LAUNCHER_DIR }}
+        run: npm run build
+
+      - name: Upload Linux artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Upload DEB
+          DEB_FILE=$(find "$LAUNCHER_DIR/src-tauri/target/release/bundle/deb" -name "*.deb" 2>/dev/null | head -1)
+          if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+            gh release upload "launcher-v$VERSION" "$DEB_FILE" --clobber
+            echo "✓ Uploaded $(basename "$DEB_FILE")"
+          fi
+          # Upload AppImage
+          APPIMAGE_FILE=$(find "$LAUNCHER_DIR/src-tauri/target/release/bundle/appimage" -name "*.AppImage" 2>/dev/null | head -1)
+          if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
+            gh release upload "launcher-v$VERSION" "$APPIMAGE_FILE" --clobber
+            echo "✓ Uploaded $(basename "$APPIMAGE_FILE")"
+          fi

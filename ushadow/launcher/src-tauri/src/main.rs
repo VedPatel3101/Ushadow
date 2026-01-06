@@ -8,7 +8,7 @@ mod models;
 
 use commands::{AppState, check_prerequisites, discover_environments,
     start_containers, stop_containers, get_container_status,
-    check_backend_health, open_browser, open_in_app, set_project_root,
+    check_backend_health, check_webui_health, open_browser, set_project_root,
     create_environment};
 use tauri::{
     CustomMenuItem, Manager, Menu, MenuItem, SystemTray,
@@ -94,8 +94,8 @@ fn main() {
             stop_containers,
             get_container_status,
             check_backend_health,
+            check_webui_health,
             open_browser,
-            open_in_app,
             discover_environments,
             create_environment,
         ])
