@@ -1350,14 +1350,9 @@
           launchContainer.classList.remove('hidden');
           twoColumn.classList.add('hidden');
 
-          // Enable launch button if Docker is running
-          if (prerequisites?.docker_running) {
-            launchBtn.disabled = false;
-            log('Launch container shown - button enabled (Docker running)');
-          } else {
-            launchBtn.disabled = true;
-            log('Launch container shown - button disabled (Docker not running)');
-          }
+          // Always enable launch button - it handles prerequisite installation
+          launchBtn.disabled = false;
+          log('Launch container shown - button enabled');
         } else {
           // Something running - show normal UI
           launchContainer.classList.add('hidden');
@@ -1921,14 +1916,9 @@
         await checkPrerequisites();
         await checkContainerStatus();
 
-        // Enable launch button after prerequisites check
-        if (prerequisites?.docker_running) {
-          launchBtn.disabled = false;
-          log('Launch button enabled - Docker is running');
-        } else {
-          launchBtn.disabled = true;
-          log('Launch button disabled - Docker not running');
-        }
+        // Launch button is always enabled - it handles prerequisite installation
+        launchBtn.disabled = false;
+        log('Launcher initialized - Launch button ready');
 
         // Poll status every 60 seconds (reduced from 10s to minimize resource usage)
         // Use the manual refresh button for immediate updates
