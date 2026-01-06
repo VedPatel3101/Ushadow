@@ -1,0 +1,28 @@
+{
+  "name": "ushadow-launcher",
+  "version": "0.1.0",
+  "description": "Ushadow Desktop Launcher",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:debug": "tauri build --debug",
+    "build:macos": "tauri build --target universal-apple-darwin",
+    "build:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
+    "icons": "tauri icon src-tauri/icons/app-icon.png",
+    "version": "./scripts/version.sh",
+    "version:get": "./scripts/version.sh get",
+    "version:bump": "./scripts/version.sh bump",
+    "release": "./scripts/release.sh",
+    "release:build": "./scripts/build.sh current",
+    "release:full": "./scripts/release.sh full"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.11"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.5.3"
+  }
+}
