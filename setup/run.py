@@ -123,7 +123,7 @@ def check_docker():
     print_color(Colors.RED, "❌ Docker not found. Please install Docker Desktop.")
     return False
 
-def generate_env_file(env_name: str, port_offset: int, env_file: Path, secrets_file: Path, dev_mode: bool = False):
+def generate_env_file(env_name: str, port_offset: int, env_file: Path, secrets_file: Path, dev_mode: bool = False, quick_mode: bool = False):
     """Generate .env file with configuration."""
     backend_port = DEFAULT_BACKEND_PORT + port_offset
     webui_port = DEFAULT_WEBUI_PORT + port_offset
@@ -131,8 +131,27 @@ def generate_env_file(env_name: str, port_offset: int, env_file: Path, secrets_f
     # Validate ports
     all_available, conflicts = validate_ports([backend_port, webui_port])
     if conflicts:
-        print_color(Colors.RED, f"❌ Port conflict: {conflicts}")
-        return None
+        if quick_mode:
+            # In quick mode, automatically find available ports
+            print_color(Colors.YELLOW, f"⚠️  Port conflict detected: {conflicts}")
+            print_color(Colors.BLUE, "🔍 Auto-finding available ports...")
+            
+            # Try incrementing port offset until we find available ports (max 100 attempts)
+            for attempt in range(100):
+                port_offset += 10  # Increment by 10 to avoid nearby conflicts
+                backend_port = DEFAULT_BACKEND_PORT + port_offset
+                webui_port = DEFAULT_WEBUI_PORT + port_offset
+                
+                all_available, conflicts = validate_ports([backend_port, webui_port])
+                if all_available:
+                    print_color(Colors.GREEN, f"✅ Found available ports (offset: {port_offset})")
+                    break
+            else:
+                print_color(Colors.RED, "❌ Could not find available ports after 100 attempts")
+                return None
+        else:
+            print_color(Colors.RED, f"❌ Port conflict: {conflicts}")
+            return None
 
     # Find available Redis database
     preferred_redis_db = (port_offset // 10) % 16
@@ -444,8 +463,9 @@ def main():
     else:
         # Prompt for config in interactive mode
         if args.quick:
-            env_name = APP_NAME
-            port_offset = 0
+            # In quick mode, read from environment variables (set by launcher)
+            env_name = os.environ.get("ENV_NAME", APP_NAME)
+            port_offset = int(os.environ.get("PORT_OFFSET", "0"))
         else:
             user_config = prompt_for_config()
             env_name = user_config["env_name"]
@@ -476,7 +496,8 @@ def main():
             port_offset=port_offset,
             env_file=env_file,
             secrets_file=secrets_file,
-            dev_mode=dev_mode
+            dev_mode=dev_mode,
+            quick_mode=args.quick
         )
         if not config:
             sys.exit(1)

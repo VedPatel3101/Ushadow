@@ -186,21 +186,109 @@ pub fn check_python() -> (bool, Option<String>) {
     }
 }
 
+/// Check if Homebrew is installed (macOS only)
+/// Tries login shell first, then falls back to known paths
+#[cfg(target_os = "macos")]
+pub fn check_homebrew() -> (bool, Option<String>) {
+    use std::path::Path;
+    
+    // Mock mode for testing
+    if is_mock_mode() {
+        let installed = env::var("MOCK_HOMEBREW_INSTALLED").unwrap_or_default() == "true";
+        let version = if installed {
+            Some("Homebrew 5.0.0 (MOCKED)".to_string())
+        } else {
+            None
+        };
+        return (installed, version);
+    }
+
+    // Try login shell first
+    let version_output = shell_command("brew --version")
+        .output();
+
+    if let Ok(output) = version_output {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            return (true, Some(version));
+        }
+    }
+
+    // Try to find brew's actual location via which
+    if let Ok(output) = shell_command("which brew").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && Path::new(&path).exists() {
+                // Try to get version from found path
+                if let Ok(ver_output) = silent_command(&path).args(["--version"]).output() {
+                    if ver_output.status.success() {
+                        let version = String::from_utf8_lossy(&ver_output.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        return (true, Some(version));
+                    }
+                }
+            }
+        }
+    }
+
+    // Last resort: try known paths directly (for fresh .pkg installs where shell profile not loaded)
+    let known_paths = [
+        "/opt/homebrew/bin/brew",      // Apple Silicon
+        "/usr/local/bin/brew",          // Intel Mac
+    ];
+
+    for path in known_paths {
+        if Path::new(path).exists() {
+            if let Ok(output) = silent_command(path).args(["--version"]).output() {
+                if output.status.success() {
+                    let version = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    return (true, Some(version));
+                }
+            }
+        }
+    }
+
+    (false, None)
+}
+
+/// Check if Homebrew is installed (non-macOS platforms)
+#[cfg(not(target_os = "macos"))]
+pub fn check_homebrew() -> (bool, Option<String>) {
+    (false, None) // Homebrew not applicable on non-macOS
+}
+
 /// Get full prerequisite status
 #[tauri::command]
 pub fn check_prerequisites() -> Result<PrerequisiteStatus, String> {
+    let (homebrew_installed, homebrew_version) = check_homebrew();
     let (docker_installed, docker_running, docker_version) = check_docker();
     let (tailscale_installed, tailscale_connected, tailscale_version) = check_tailscale();
     let (git_installed, git_version) = check_git();
     let (python_installed, python_version) = check_python();
 
     Ok(PrerequisiteStatus {
+        homebrew_installed,
         docker_installed,
         docker_running,
         tailscale_installed,
         tailscale_connected,
         git_installed,
         python_installed,
+        homebrew_version,
         docker_version,
         tailscale_version,
         git_version,

@@ -2,12 +2,14 @@ import { invoke } from '@tauri-apps/api/tauri'
 
 // Type definitions for Tauri commands - matching Rust models
 export interface Prerequisites {
+  homebrew_installed: boolean
   docker_installed: boolean
   docker_running: boolean
   tailscale_installed: boolean
   tailscale_connected: boolean
   git_installed: boolean
   python_installed: boolean
+  homebrew_version: string | null
   docker_version: string | null
   tailscale_version: string | null
   git_version: string | null
