@@ -7,7 +7,6 @@ interface PrerequisitesPanelProps {
   platform: string
   isInstalling: boolean
   installingItem: string | null
-  brewInstalled: boolean | null
   onInstall: (item: 'git' | 'docker' | 'tailscale' | 'homebrew' | 'python') => void
   onStartDocker: () => void
 }
@@ -17,7 +16,6 @@ export function PrerequisitesPanel({
   platform,
   isInstalling,
   installingItem,
-  brewInstalled,
   onInstall,
   onStartDocker,
 }: PrerequisitesPanelProps) {
@@ -56,8 +54,8 @@ export function PrerequisitesPanel({
               <p className="text-xs text-text-muted mb-1">Package Manager</p>
               <PrereqItem
                 label="Homebrew"
-                installed={brewInstalled}
-                showInstall={brewInstalled === false}
+                installed={prerequisites?.homebrew_installed ?? null}
+                showInstall={!prerequisites?.homebrew_installed}
                 onInstall={() => onInstall('homebrew')}
                 isInstalling={isInstalling}
                 installing={installingItem === 'homebrew'}

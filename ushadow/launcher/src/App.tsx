@@ -38,7 +38,6 @@ function App() {
   const [loadingEnv, setLoadingEnv] = useState<string | null>(null)
   const [showProjectDialog, setShowProjectDialog] = useState(false)
   const [showNewEnvDialog, setShowNewEnvDialog] = useState(false)
-  const [brewInstalled, setBrewInstalled] = useState<boolean | null>(null)
   const [logExpanded, setLogExpanded] = useState(true)
   const [embeddedView, setEmbeddedView] = useState<{ url: string; envName: string; envColor: string } | null>(null)
   const [creatingEnvs, setCreatingEnvs] = useState<{ name: string; status: 'cloning' | 'starting' | 'error'; path?: string; error?: string }[]>([])
@@ -74,12 +73,14 @@ function App() {
   const getEffectivePrereqs = useCallback((real: Prerequisites | null): Prerequisites | null => {
     if (!real) return null
     return {
+      homebrew_installed: spoofedPrereqs.homebrew_installed ?? real.homebrew_installed,
       git_installed: spoofedPrereqs.git_installed ?? real.git_installed,
       docker_installed: spoofedPrereqs.docker_installed ?? real.docker_installed,
       docker_running: spoofedPrereqs.docker_running ?? real.docker_running,
       tailscale_installed: spoofedPrereqs.tailscale_installed ?? real.tailscale_installed,
       tailscale_connected: real.tailscale_connected,
       python_installed: spoofedPrereqs.python_installed ?? real.python_installed,
+      homebrew_version: real.homebrew_version,
       docker_version: real.docker_version,
       tailscale_version: real.tailscale_version,
       git_version: real.git_version,
@@ -95,6 +96,7 @@ function App() {
 
       if (!silent) {
         // Log actual command results
+        log(`$ brew --version → ${prereqs.homebrew_version || 'not found'}`)
         log(`$ docker --version → ${prereqs.docker_version || 'not found'}`)
         log(`$ docker info → ${prereqs.docker_running ? 'running' : 'not running'}`)
         log(`$ git --version → ${prereqs.git_version || 'not found'}`)
@@ -129,34 +131,6 @@ function App() {
     }
   }, [log, logStateChange])
 
-  const checkBrew = useCallback(async (silent = false, osOverride?: string) => {
-    const currentPlatform = osOverride || platform
-    if (currentPlatform !== 'macos') return true
-    try {
-      // Check for spoofed value first (for dry run mode)
-      if (spoofedPrereqs.homebrew_installed !== undefined) {
-        const installed = spoofedPrereqs.homebrew_installed
-        setBrewInstalled(installed)
-        if (!silent) {
-          log(`$ brew --version → ${installed ? 'installed' : 'not found'}`)
-        }
-        return installed
-      }
-
-      const installed = await tauri.checkBrew()
-      setBrewInstalled(installed)
-      if (!silent) {
-        log(`$ brew --version → ${installed ? 'installed' : 'not found'}`)
-      }
-      return installed
-    } catch (err) {
-      if (!silent) {
-        log(`Failed to check Homebrew: ${err}`, 'error')
-      }
-      return false
-    }
-  }, [platform, log, spoofedPrereqs.homebrew_installed])
-
   // Initialize
   useEffect(() => {
     const init = async () => {
@@ -182,7 +156,6 @@ function App() {
         await tauri.setProjectRoot(projectRoot)
       }
 
-      await checkBrew(false, os)
       await refreshPrerequisites()
       const disc = await refreshDiscovery()
 
@@ -281,7 +254,7 @@ function App() {
             break
           case 'python':
             if (platform === 'macos') {
-              if (!brewInstalled) {
+              if (!prerequisites?.homebrew_installed) {
                 log('Homebrew required first', 'warning')
                 return
               }
@@ -296,7 +269,7 @@ function App() {
             return
           case 'docker':
             if (platform === 'macos') {
-              if (!brewInstalled) {
+              if (!prerequisites?.homebrew_installed) {
                 log('Homebrew required first', 'warning')
                 return
               }
@@ -721,8 +694,8 @@ function App() {
 
       // Step 1: On macOS, ensure Homebrew is installed first (required for other tools)
       if (platform === 'macos') {
-        const brewCheck = await checkBrew(false)
-        if (!brewCheck) {
+        let prereqs = getEffectivePrereqs(await refreshPrerequisites())
+        if (!prereqs?.homebrew_installed) {
           log('Homebrew not found - installing first (required for other tools)...', 'step')
           await handleInstall('homebrew')
 
@@ -730,8 +703,8 @@ function App() {
           await new Promise(r => setTimeout(r, 100))
 
           // Verify installation
-          const brewInstalled = await checkBrew(false)
-          if (!brewInstalled) {
+          prereqs = getEffectivePrereqs(await refreshPrerequisites())
+          if (!prereqs?.homebrew_installed) {
             log('⚠️  Homebrew installation command completed, but detection failed', 'warning')
             log('You may need to restart your terminal or run the post-install steps', 'info')
             failedInstalls.push('Homebrew')
@@ -820,8 +793,20 @@ function App() {
         await handleClone(projectRoot)
       }
 
-      // Step 6: Start default environment
-      await handleStartEnv('default')
+      // Step 6: Start infrastructure (postgres, redis, etc.)
+      log('Starting infrastructure...', 'step')
+      if (dryRunMode) {
+        log('[DRY RUN] Would start infrastructure', 'warning')
+        await new Promise(r => setTimeout(r, 1000))
+        log('[DRY RUN] Infrastructure started', 'success')
+      } else {
+        const infraResult = await tauri.startInfrastructure()
+        log(infraResult, 'success')
+      }
+      await refreshDiscovery()
+
+      // Step 7: Start ushadow environment
+      await handleStartEnv('ushadow')
 
       if (failedInstalls.length > 0) {
         log('Quick launch completed with warnings', 'warning')
@@ -836,7 +821,6 @@ function App() {
   }
 
   const effectivePrereqs = getEffectivePrereqs(prerequisites)
-  const effectiveBrewInstalled = spoofedPrereqs.homebrew_installed ?? brewInstalled
 
   return (
     <div className="h-screen bg-surface-900 text-text-primary flex flex-col overflow-hidden" data-testid="launcher-app">
@@ -993,7 +977,6 @@ function App() {
                 platform={platform}
                 isInstalling={isInstalling}
                 installingItem={installingItem}
-                brewInstalled={effectiveBrewInstalled}
                 onInstall={handleInstall}
                 onStartDocker={handleStartDocker}
               />

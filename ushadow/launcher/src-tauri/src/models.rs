@@ -3,12 +3,14 @@ use serde::{Deserialize, Serialize};
 /// Prerequisite check result
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PrerequisiteStatus {
+    pub homebrew_installed: bool,
     pub docker_installed: bool,
     pub docker_running: bool,
     pub tailscale_installed: bool,
     pub tailscale_connected: bool,
     pub git_installed: bool,
     pub python_installed: bool,
+    pub homebrew_version: Option<String>,
     pub docker_version: Option<String>,
     pub tailscale_version: Option<String>,
     pub git_version: Option<String>,

@@ -1,5 +1,6 @@
 use super::utils::{silent_command, shell_command};
 use std::process::Command;
+use super::prerequisites::check_homebrew;
 
 /// Check if Homebrew is installed (macOS)
 /// Uses 'which brew' to find brew anywhere, with fallback to known paths
@@ -172,14 +173,9 @@ pub async fn install_homebrew() -> Result<String, String> {
 /// Check if Homebrew is installed (exported for frontend)
 #[tauri::command]
 pub fn check_brew() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        check_brew_installed()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
+    // Use the centralized check_homebrew function from prerequisites
+    let (installed, _version) = check_homebrew();
+    installed
 }
 
 /// Install Docker via Homebrew (macOS)
